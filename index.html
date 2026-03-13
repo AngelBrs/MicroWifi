@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>micro:bit Sender</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0c0f;
+    --panel:    #10141a;
+    --border:   #1e2530;
+    --accent:   #00e5ff;
+    --accent2:  #ff6b35;
+    --muted:    #3a4455;
+    --text:     #c8d4e8;
+    --text-dim: #5a6a80;
+    --mono:     'Share Tech Mono', monospace;
+    --sans:     'Barlow', sans-serif;
+    --glow:     0 0 20px rgba(0,229,255,0.25);
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* Noise texture */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 998;
+    opacity: 0.4;
+  }
+
+  .wrapper {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 560px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    position: relative;
+    animation: fadeIn 0.6s ease both;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Corner screws */
+  .card::before, .card::after,
+  .card .screw-bl, .card .screw-br {
+    content: '✕';
+    position: absolute;
+    font-size: 8px;
+    color: var(--muted);
+    width: 14px; height: 14px;
+    display: grid; place-items: center;
+    border: 1px solid var(--muted);
+    border-radius: 50%;
+  }
+  .card::before { top: 8px; left: 8px; }
+  .card::after  { top: 8px; right: 8px; }
+  .card .screw-bl { bottom: 8px; left: 8px; }
+  .card .screw-br { bottom: 8px; right: 8px; }
+
+  /* Header stripe */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 28px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .led {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent), 0 0 20px rgba(0,229,255,0.4);
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .led.red   { background: #ff3b3b; box-shadow: 0 0 8px #ff3b3b; animation: none; }
+  .led.amber { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+
+  .title-block { flex: 1; }
+
+  .title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .subtitle {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    font-family: var(--mono);
+  }
+
+  .badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+  }
+
+  /* Body */
+  .body { padding: 28px; }
+
+  .field-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .field-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  textarea {
+    width: 100%;
+    background: #080b10;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 16px;
+    padding: 16px;
+    resize: none;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    line-height: 1.5;
+    caret-color: var(--accent);
+  }
+  textarea::placeholder { color: var(--muted); }
+  textarea:focus {
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+  }
+
+  .char-counter {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: right;
+    margin-top: 6px;
+  }
+  .char-counter.warn { color: var(--accent2); }
+
+  .send-row {
+    margin-top: 20px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  button {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: all 0.15s;
+  }
+
+  .btn-send {
+    flex: 1;
+    background: var(--accent);
+    color: #000;
+    padding: 14px 24px;
+    font-weight: 700;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-send::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.15);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  .btn-send:hover::before { transform: translateX(0); }
+  .btn-send:active { transform: scale(0.98); }
+  .btn-send:disabled {
+    background: var(--muted);
+    color: var(--text-dim);
+    cursor: not-allowed;
+  }
+  .btn-send:disabled::before { display: none; }
+
+  .btn-clear {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+  .btn-clear:hover { border-color: var(--text-dim); color: var(--text); }
+
+  /* Status bar */
+  .status-bar {
+    border-top: 1px solid var(--border);
+    padding: 12px 28px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+  }
+
+  .status-text {
+    font-family: var(--mono);
+    font-size: 11px;
+    flex: 1;
+  }
+  .status-text.idle    { color: var(--text-dim); }
+  .status-text.sending { color: var(--accent); }
+  .status-text.ok      { color: #4cff91; }
+  .status-text.err     { color: #ff4c4c; }
+
+  /* Current message display */
+  .current-section {
+    border-top: 1px solid var(--border);
+    padding: 20px 28px;
+  }
+
+  .current-msg {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    background: #080b10;
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    padding: 10px 14px;
+    word-break: break-all;
+    min-height: 40px;
+    transition: opacity 0.3s;
+  }
+
+  /* Footer grid */
+  .footer {
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .foot-cell {
+    padding: 10px 14px;
+    border-right: 1px solid var(--border);
+  }
+  .foot-cell:last-child { border-right: none; }
+
+  .foot-label {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .foot-val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    margin-top: 2px;
+  }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 1.5px solid var(--muted);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <span class="screw-bl">✕</span>
+    <span class="screw-br">✕</span>
+
+    <div class="header">
+      <div class="led" id="connLed"></div>
+      <div class="title-block">
+        <div class="title">micro:bit transmitter</div>
+        <div class="subtitle" id="endpointLabel">— not connected —</div>
+      </div>
+      <div class="badge">SIMPLE WIFI</div>
+    </div>
+
+    <div class="body">
+      <div class="field-label">transmission payload</div>
+      <textarea
+        id="msgInput"
+        rows="4"
+        maxlength="200"
+        placeholder="Type something to send to your micro:bit..."
+        autofocus
+      ></textarea>
+      <div class="char-counter" id="charCount">0 / 200</div>
+
+      <div class="send-row">
+        <button class="btn-send" id="sendBtn" onclick="sendMessage()">⬡ TRANSMIT</button>
+        <button class="btn-clear" onclick="clearInput()">CLR</button>
+      </div>
+    </div>
+
+    <div class="current-section">
+      <div class="field-label">current message on device</div>
+      <div class="current-msg" id="currentMsg">—</div>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-text idle" id="statusText">STANDBY — waiting for transmission</div>
+    </div>
+
+    <div class="footer">
+      <div class="foot-cell">
+        <div class="foot-label">sent</div>
+        <div class="foot-val" id="sentCount">0</div>
+      </div>
+      <div class="foot-cell">
+        <div class="foot-label">last sent</div>
+        <div class="foot-val" id="lastTime">—</div>
+      </div>
+      <div class="foot-cell">
+        <div class="foot-label">status</div>
+        <div class="foot-val" id="connStatus">OFFLINE</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = "/api/message";
+  let sentCount = 0;
+
+  const msgInput   = document.getElementById("msgInput");
+  const sendBtn    = document.getElementById("sendBtn");
+  const statusText = document.getElementById("statusText");
+  const currentMsg = document.getElementById("currentMsg");
+  const charCount  = document.getElementById("charCount");
+  const connLed    = document.getElementById("connLed");
+  const connStatus = document.getElementById("connStatus");
+  const endpointLabel = document.getElementById("endpointLabel");
+
+  // Show endpoint
+  endpointLabel.textContent = window.location.origin + API;
+
+  // Char counter
+  msgInput.addEventListener("input", () => {
+    const len = msgInput.value.length;
+    charCount.textContent = `${len} / 200`;
+    charCount.className = "char-counter" + (len > 160 ? " warn" : "");
+  });
+
+  // Send on Ctrl+Enter
+  msgInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendMessage();
+  });
+
+  function setStatus(type, msg) {
+    statusText.className = `status-text ${type}`;
+    statusText.innerHTML = msg;
+  }
+
+  async function sendMessage() {
+    const text = msgInput.value.trim();
+    if (!text) { setStatus("err", "ERROR — nothing to transmit"); return; }
+
+    sendBtn.disabled = true;
+    setStatus("sending", '<span class="spinner"></span>TRANSMITTING...');
+
+    try {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: text
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      sentCount++;
+      document.getElementById("sentCount").textContent = sentCount;
+      document.getElementById("lastTime").textContent = new Date().toLocaleTimeString();
+      currentMsg.textContent = text;
+      setStatus("ok", `✓ TRANSMITTED — micro:bit will display on next GET`);
+      connLed.classList.remove("red");
+      connStatus.textContent = "ONLINE";
+
+      setTimeout(() => setStatus("idle", "STANDBY — waiting for transmission"), 4000);
+    } catch (e) {
+      setStatus("err", `ERROR — ${e.message}`);
+      connLed.classList.add("red");
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  function clearInput() {
+    msgInput.value = "";
+    charCount.textContent = "0 / 200";
+    charCount.className = "char-counter";
+    msgInput.focus();
+  }
+
+  // Poll current message every 3s
+  async function pollCurrent() {
+    try {
+      const res = await fetch(API);
+      if (res.ok) {
+        const text = await res.text();
+        currentMsg.textContent = text || "—";
+        connStatus.textContent = "ONLINE";
+        connLed.className = "led";
+      }
+    } catch {}
+    setTimeout(pollCurrent, 3000);
+  }
+
+  pollCurrent();
+</script>
+</body>
+</html>
